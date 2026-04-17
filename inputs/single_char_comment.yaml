@@ -1,0 +1,23 @@
+syntax: "Packages/RSpec/RSpec.sublime-syntax"
+filename: "syntax_test_rspec.rb"
+tests:
+  - line: "describe Some::Tag do"
+    assertions:
+      - span: "describe"
+        scopes: [keyword.other.rspec.behaviour, meta.rspec.behaviour]
+      - span: "Some::Tag do"
+        scopes: [meta.rspec.behaviour]
+  - line: "RSpec.describe Some::Tag do"
+    assertions:
+      - span: "RSpec"
+        scopes: [support.module.rspec, meta.rspec.behaviour]
+      - span: "describe"
+        scopes: [keyword.other.rspec.behaviour, meta.rspec.behaviour]
+  - line: "allow(JSON).to receive(:parse).and_return config"
+    assertions:
+      - span: "."
+        scopes: [source.ruby.rspec punctuation.accessor.dot.ruby]
+        nth: 0
+      - span: "."
+        scopes: [source.ruby.rspec punctuation.accessor.dot.ruby]
+        nth: 1

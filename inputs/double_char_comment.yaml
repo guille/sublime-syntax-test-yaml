@@ -1,0 +1,10 @@
+syntax: "Packages/C++/C.sublime-syntax"
+filename: "syntax_test_c.c"
+comment_char: "//"
+tests:
+  - line: "#pragma once"
+    assertions:
+      - span: "#pragma"
+        scopes: [source.c, keyword.control.import]
+      - span: "once"
+        scopes: [meta.preprocessor.c]
