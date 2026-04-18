@@ -1,0 +1,76 @@
+Data path: /home/grodriguez/projects/sublime-dart/st_syntax_tests/Data
+Cache path: /home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Cache
+Packages path: /home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages
+Running: /home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:1
+error: scope does not match
+8 | import 'dart:math' as math;
+9 | // <- keyword.control.import.dart
+  | ^ this location did not match
+actual:
+  | ^^^^^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:2
+error: scope does not match
+ 8 | import 'dart:math' as math;
+10 |  // <- keyword.control.import.dart
+   |  ^ this location did not match
+actual:
+   | ^^^^^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:3
+error: scope does not match
+ 8 | import 'dart:math' as math;
+11 | //^^^^ keyword.control.import.dart
+   |   ^^^^ these locations did not match
+actual:
+   | ^^^^^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:8
+error: scope does not match
+ 8 | import 'dart:math' as math;
+12 | //     ^^^^^^^^^^^ meta.declaration.import.dart string.quoted.single.dart
+   |        ^^^^^^^^^^^ these locations did not match
+actual:
+   |        ^^^^^^^^^^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:8
+error: scope does not match
+ 8 | import 'dart:math' as math;
+13 | //     ^ punctuation.definition.string.begin.dart
+   |        ^ this location did not match
+actual:
+   |        ^^^^^^^^^^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:18
+error: scope does not match
+ 8 | import 'dart:math' as math;
+14 | //               ^ punctuation.definition.string.end.dart
+   |                  ^ this location did not match
+actual:
+   |        ^^^^^^^^^^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:20
+error: scope does not match
+ 8 | import 'dart:math' as math;
+15 | //                 ^^ meta.declaration.import.dart keyword.control.import.dart
+   |                    ^^ these locations did not match
+actual:
+   |                    ^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:23
+error: scope does not match
+ 8 | import 'dart:math' as math;
+16 | //                    ^^^^ meta.declaration.import.dart variable.other.readwrite.dart
+   |                       ^^^^ these locations did not match
+actual:
+   |                       ^^^^^ source.dart 
+
+/home/grodriguez/projects/sublime-dart/st_syntax_tests/Data/Packages/Dart-guille/tests/syntax_test_example:8:27
+error: scope does not match
+ 8 | import 'dart:math' as math;
+17 | //                        ^ meta.declaration.import.dart punctuation.terminator.dart
+   |                           ^ this location did not match
+actual:
+   |                       ^^^^^ source.dart 
+

@@ -1,0 +1,6 @@
+[tasks.test]
+depends = ["gen-tests"]
+run = "./st_syntax_tests/syntax_tests | python parse_syntax_test_output.py -c '//'"
+
+[tasks.gen-tests]
+run = "./yaml2syntaxtest.py tests package/tests"

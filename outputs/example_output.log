@@ -1,0 +1,30 @@
+Packages/User/syntax_test_mise_output:7:6
+error: scope does not match
+ 7 | check   Format & lint the code
+10 | #    ^^^ texta.build.mise
+   |      ^^^ these locations did not match
+actual:
+   |      ^^^ text.build.mise
+
+Packages/User/syntax_test_mise_output:7:9
+error: scope does not match
+17 | checkdb   Format & lint the code
+21 | #       ^^^^^^^^^^^^^^^^^^^^^^ meta.description.mise
+   |         ^^ these locations did not match
+actual:
+   |        ^^^                       text.build.mise
+   |           ^^^^^^^                text.build.mise meta.description.mise
+   |                  ^^              text.build.mise meta.description.mise
+   |                    ^^^^^         text.build.mise meta.description.mise
+   |                         ^^^^     text.build.mise meta.description.mise
+   |                             ^^^^ text.build.mise meta.description.mise
+
+Packages/User/syntax_test_rspec:12:7
+error: scope does not match
+12 | RSpec.describe Some::Tag do
+15 | #     ^^^^^^^^ keyword.other.rsapec.behaviour
+   |       ^^^^^^^^ these locations did not match
+actual:
+   |       ^^^^^^^^ source.ruby.rspec meta.rspec.behaviour keyword.other.rspec.behaviour
+
+FAILED: 3 of 110 assertions in 2 files failed
