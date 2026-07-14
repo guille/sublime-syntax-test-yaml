@@ -22,15 +22,21 @@ YAML structure:
           nth: 0                                   # optional, 0-indexed, default 0
         - span: "Some::Tag do"
           scopes: [meta.rspec.behaviour]
+    - prefix_lines:                                # optional consecutive lines
+        - "foo = bar \\"                           # emitted verbatim, no blank
+      line: "    baz"                              # between them and `line`
+      assertions:
+        - span: "baz"
+          scopes: [meta.continuation]
 
 Usage:
   python yaml2syntaxtest.py input.yaml                        # prints to stdout
   python yaml2syntaxtest.py input.yaml output.rb              # writes to file output.rb
 """
 
+import os
 import sys
 import textwrap
-import os
 
 try:
     import yaml
@@ -120,6 +126,21 @@ def convert(yaml_text: str) -> str:
         source = block.get("line", "")
         if not isinstance(source, str):
             raise ValueError(f"Block {block_idx}: 'line' must be a string")
+
+        # Optional consecutive physical lines emitted verbatim immediately
+        # before `line`, with no blank or assertion lines in between. This lets
+        # a test exercise constructs that depend on the preceding lines being
+        # contiguous (e.g. backslash line continuations, which a blank line
+        # would terminate). Assertions still apply only to `line`.
+        prefix_lines = block.get("prefix_lines", [])
+        if not isinstance(prefix_lines, list):
+            raise ValueError(f"Block {block_idx}: 'prefix_lines' must be a list")
+        for pl in prefix_lines:
+            if not isinstance(pl, str):
+                raise ValueError(
+                    f"Block {block_idx}: each 'prefix_lines' item must be a string"
+                )
+            out.append(pl)
 
         out.append(source)
 
