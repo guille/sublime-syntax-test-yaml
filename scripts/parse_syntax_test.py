@@ -12,7 +12,7 @@ Usage:
     cat output.log | parse_syntax_test.py
     parse_syntax_test.py < output.log
     cat output.log | parse_syntax_test.py -c "//"
-    cat output.log | parse_syntax_test.py --comment-map package/tests/.comment_chars.json
+    cat output.log | parse_syntax_test.py --comment-map tests/.comment_chars.json
 
 Options:
     -c, --comment-char  Comment character to assume for files not covered by
@@ -101,7 +101,9 @@ def parse_failure_line(lines: list[str], comment_char: str = "#") -> dict | None
                 if right.strip().startswith(comment_char):
                     expected_caret_line = line
                 else:
-                    source_line = right.strip()
+                    # Must stay unstripped: column_under_test indexes the source
+                    # line as-is, so dropping indentation shifts every span.
+                    source_line = right.rstrip("\r\n")
 
         if line.strip() == "actual:":
             actual_start = i + 1

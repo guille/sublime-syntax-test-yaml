@@ -50,27 +50,37 @@ guess):
 
 1. **Language** being written a syntax for.
 2. **Where the `.sublime-syntax` file should live** in the target project.
-   If there's no existing convention, create a `package/` directory at the
-   target project's root laid out the way Sublime itself expects a package,
-   e.g. `package/<Language>.sublime-syntax`. `package/tests/` is a generated
-   output directory — don't hand-edit it. Step 4 overwrites one file there per
-   `tests/*.yaml`, but it does **not** clear the directory first: renaming or
-   deleting a YAML source leaves its stale `syntax_test_*` behind, and the
-   binary keeps running it. Delete the orphan by hand when that happens (and
-   consider gitignoring `package/tests/`).
+   Default to the layout a Sublime package actually ships as — the repo root
+   *is* the package, because that's what Package Control installs:
+
+   ```
+   <Language>.sublime-syntax    # repo root, alongside Comments.tmPreferences etc.
+   tests/syntax_test_*          # generated; tracked in git
+   yaml_tests/*.yaml            # YAML sources for this DSL; tracked in git
+   st_syntax_tests/             # the test binary; gitignored
+   ```
+
+   Track `tests/` rather than gitignoring it. It lets CI run the suite with
+   nothing but the binary — no Python, no PyYAML, no copy of this toolkit —
+   and it lets experienced contributors add a hand-written `syntax_test_*`
+   with no YAML counterpart. Use `.gitattributes` `export-ignore` to keep
+   `tests/`, `yaml_tests/` and dev files out of the shipped package archive.
+
+   Step 4 overwrites one file in `tests/` per `yaml_tests/*.yaml`, but does
+   **not** clear the directory first — deliberately, so hand-written tests
+   survive. The cost is that renaming or deleting a YAML source leaves its
+   stale `syntax_test_*` behind and the binary keeps running it. Delete the
+   orphan by hand when that happens.
 3. **The package name** — the first path segment after `Packages/` that the
    YAML tests' `syntax:` field will reference, e.g.
    `syntax: "Packages/RSpec/RSpec.sublime-syntax"` implies package name
    `RSpec`. This must exactly match the `package_name` passed to
    `setup_syntax_tests.sh` in Step 3, because Sublime's test binary resolves
-   `Packages/<name>/...` against a symlink named `<name>`.
+   `Packages/<name>/...` against a directory named `<name>`.
 4. **Whether a grammar/spec document exists** to seed from. If so, read it,
    but remember a grammar validates syntax and a `.sublime-syntax` file
    assigns *scopes* to token positions — this is not about writing a
    validator.
-
-Also create a `tests/` directory at the target project root for the YAML
-test sources (distinct from the generated `package/tests/`).
 
 ## Step 1 — Read the reference docs
 
@@ -108,6 +118,47 @@ examples, including a `comment_char: "//"` variant for C-style languages,
 are in `examples/yaml/single_char_comment.yaml` and
 `examples/yaml/double_char_comment.yaml`.
 
+A `scopes:` list is emitted joined by `&`, an order-independent AND: every
+listed scope must be present on the token, in any nesting order. That default
+matters because the ways of combining scopes are *not* interchangeable, and
+only one of them means "all of these".
+
+Full operator set, per <https://www.sublimetext.com/docs/selectors.html>:
+
+| Selector | Meaning |
+|---|---|
+| `a b` | descendant — `b` somewhere after `a` in the scope stack, not necessarily adjacent |
+| `a & b` | AND, order-independent — what `scopes: [a, b]` emits |
+| `a, b` / `a \| b` | **OR** (the two are identical) |
+| `-a` | NOT |
+| `(...)` | grouping |
+| `a > b` | child — `b` immediately after `a`. **Avoid**, see below |
+
+Precedence, highest first: `()`, `-`, `&`, `|`, `,` — otherwise left-to-right.
+Matching is by dotted *prefix*: "for a selector to match a token's scope name,
+all of its labels must be present in the same order", so bare `string` matches
+`string.quoted.double.expr`. There are no wildcards or anchors.
+
+Three consequences worth knowing, all verified against the build-4200 binary:
+
+- **`a, b` is a near-useless assertion.** `bogus.zzz, string.quoted.double`
+  *passes*, because OR is satisfied by the half that matches. Never hand-write
+  a comma-separated scope string hoping for set semantics.
+- **Don't use `>` at all yet.** It is documented, but it only exists in build
+  4205, which is a dev build and not public at time of writing. On 4200 a `>`
+  selector never matched — spaced, unspaced, or where the two scopes are
+  provably adjacent — while the equivalent descendant selector passed. It fails
+  silently as a plain non-match, so it reads like a syntax bug rather than an
+  unsupported operator.
+- **Subtraction composes safely with the list form**, since `-` binds tighter
+  than `&`. Both `scopes: [string.quoted.double.expr, "- comment"]` and a
+  single `["string.quoted.double.expr - comment"]` assert "is a string and is
+  *not* a comment". Do this liberally — negative assertions are what pin down
+  that `//` inside a string isn't a comment, or that `..` didn't match as an
+  accessor. They catch the failures that positive assertions sail past.
+
+Use a single string only to assert a nesting path deliberately.
+
 Aim for coverage like Sublime's own built-in syntaxes: every language
 feature, from the simplest case to edge cases (nested constructs,
 unterminated strings, escapes, comments containing lookalike tokens, etc).
@@ -128,11 +179,30 @@ All arguments are optional:
 |---|---|---|
 | 1st arg or `SUBLIME_BUILD` | `4200` | Sublime Text build number for the test binary. `4200` is the only build this toolset has actually been verified against — only change it if there's a specific reason to. |
 | 2nd arg or `SYNTAX_TESTS_DIR` | `./st_syntax_tests` | Where to download/extract the binary (relative to the current directory, i.e. the target project). |
-| 3rd arg | *(none)* | Path to the package directory to test (e.g. `package/` from Step 0). If given, it's symlinked in as `Data/Packages/<package_name>`. |
-| 4th arg | `basename` of the 3rd arg | Explicit name for that symlink — must match what the YAML `syntax:` fields expect (Step 0.3). |
+| 3rd arg | *(none)* | Path to the package to test — with the Step 0 layout this is the repo root, `.`. If given, `Data/Packages/<package_name>` is created and each of its top-level entries symlinked in. |
+| 4th arg | `basename` of the 3rd arg | Explicit name for that directory — must match what the YAML `syntax:` fields expect (Step 0.3). |
 
-Re-running this script is safe and cheap — it skips the download if the
-binary is already present (set `FORCE=1` to force re-download/re-link). This
+The 3rd arg is linked **entry by entry**, not as one symlink to the whole
+directory, and the directory holding the binary is skipped. That is what lets
+`st_syntax_tests/` live inside the repo root while the repo root is itself the
+package. Symlinking the root wholesale instead puts the binary's own
+`Data/Packages` back underneath `Data/Packages/<name>`; the binary then reaches
+it through the link and prints
+
+```
+scan: .../Data/Packages/<name>/st_syntax_tests/Data/Packages has been seen
+before, skipping (using inode) previous path: .../Data/Packages
+```
+
+and **exits 1 even though every assertion passed**. Since `run_tests.sh`
+propagates that exit code, a fully green suite reports as a failure with no
+failure blocks to explain it — check for this whenever the parsed output says
+"No failures detected" but the exit code is 1.
+
+Because entries are linked individually, re-run this script after adding a new
+top-level file to the package. Re-running is safe, cheap and idempotent: it
+skips the download if the binary is present, refreshes the entry links, and
+prunes links whose source is gone (set `FORCE=1` to force re-download). This
 script only supports Linux x64 (Sublime doesn't publish this test binary for
 other platforms); network access to `download.sublimetext.com` is required
 the first time.
@@ -140,12 +210,13 @@ the first time.
 ## Step 4 — Run tests in a loop
 
 ```bash
-bash "$SKILL_ROOT/scripts/run_tests.sh" --tests-dir tests --package-tests-dir package/tests
+bash "$SKILL_ROOT/scripts/run_tests.sh" \
+  --tests-dir yaml_tests --package-tests-dir tests --comment-char "//"
 ```
 
-Defaults match Step 0's layout (`./tests`, `./package/tests`,
-`./st_syntax_tests`), so when already standing in the target project root
-with that layout, it can be run with no arguments. This:
+Defaults are `./yaml_tests`, `./tests` and `./st_syntax_tests`, matching Step
+0's layout, so when already standing in the target project root it can be run
+with no arguments. This:
 
 1. Converts every `tests/*.yaml` into `package/tests/syntax_test_*`.
 2. Runs Sublime's `syntax_tests` binary.
@@ -190,6 +261,33 @@ the failure count trend to zero. If the parsed output is confusing for a
 particular case, write a short throwaway script against the raw binary
 output rather than guessing from column-aligned caret text.
 
+## Step 6 — Confirm a green run is actually green
+
+A malformed assertion line is *ignored*, not failed, so "No failures detected"
+does not by itself prove the assertions ran. Before reporting success, mutate
+every generated assertion to a scope that cannot match and check that the
+failure count equals the number of assertions:
+
+```bash
+# after a normal run, so package tests are up to date
+grep -cE '(\^|<-)' tests/syntax_test_* | awk -F: '{s+=$2} END {print "assertions:", s}'
+python3 - <<'EOF'
+import glob, re
+for f in glob.glob('tests/syntax_test_*'):
+    out = []
+    for line in open(f):
+        m = re.match(r'^(\s*\S*\s*(?:\^+|<-)\s*)(.*)$', line.rstrip('\n'))
+        out.append(m.group(1) + 'bogus.scope.zzz' if m and m.group(2) else line.rstrip('\n'))
+    open(f, 'w').write('\n'.join(out) + '\n')
+EOF
+./st_syntax_tests/syntax_tests 2>&1 | grep -c 'error: scope does not match'
+```
+
+The two counts should match. Regenerate (Step 4) afterwards to undo the
+mutation. Expect a small shortfall when source lines under test themselves
+contain `^` or `<-` — an exponent operator or a regex literal inflates the
+first count — so account for those before concluding an assertion is dead.
+
 ## Notes on `mise.toml`
 
 This skill repo ships a `mise.toml` with `setup`/`gen-tests`/`test` tasks
@@ -201,3 +299,14 @@ a different target project, always invoke `scripts/setup_syntax_tests.sh`
 and `scripts/run_tests.sh` directly with explicit paths as shown above,
 rather than `mise run ...`. If the user uses mise, they may be interested in
 adding those tasks to their project. Confirm with them.
+
+Don't add a `mise.toml` to the target project reflexively. When the scripts
+live in this skill, such tasks are only aliases wrapping a path into a
+gitignored `.claude/` directory — machine-specific, useless to any other
+contributor, and no shorter than the command itself. It earns its place only if
+the project vendors its own copies of the scripts at the repo root, so the
+tasks reference tracked files. Either way, ask first.
+
+For CI, don't reach for these scripts at all: with `tests/` tracked, the
+official `SublimeText/syntax-test-action@v2` runs the suite against real
+Sublime builds with no toolkit, Python or generation step involved.

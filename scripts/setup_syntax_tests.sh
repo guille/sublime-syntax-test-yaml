@@ -111,23 +111,44 @@ if [[ -n "$PACKAGE_PATH" ]]; then
   mkdir -p "$PACKAGES_DIR"
   LINK="$PACKAGES_DIR/$NAME"
 
-  if [[ -L "$LINK" && "$(readlink "$LINK")" == "$ABS_PATH" ]]; then
-    echo "already linked: $LINK -> $ABS_PATH"
-  elif [[ -e "$LINK" ]]; then
-    if [[ -n "$FORCE" ]]; then
-      rm -rf "$LINK"
-      ln -s "$ABS_PATH" "$LINK"
-      echo "re-linked: $LINK -> $ABS_PATH"
-    else
-      echo "error: '$LINK' already exists and doesn't point at '$ABS_PATH'." >&2
-      echo "       remove it manually or re-run with FORCE=1." >&2
-      exit 1
-    fi
-  else
-    ln -s "$ABS_PATH" "$LINK"
-    echo "linked: $LINK -> $ABS_PATH"
+  ABS_TARGET="$(cd "$TARGET_DIR" && pwd)"
+
+  # Link each top-level entry into a real directory rather than symlinking
+  # package_path wholesale. When package_path is the repo root (the usual layout
+  # for a Sublime package), a whole-directory symlink puts target_dir back
+  # underneath Data/Packages/<name>: the binary then reaches its own
+  # Data/Packages through the link, warns "has been seen before, skipping (using
+  # inode)" and exits 1 even when every assertion passed.
+  #
+  # -L as well as -e: a dangling symlink (package_path since moved or renamed)
+  # fails -e, and the bare `ln -s` below would then die with "File exists".
+  if [[ -L "$LINK" ]]; then
+    rm "$LINK"
   fi
+  mkdir -p "$LINK"
+  # Drop stale entry links so a file removed from the package stops being tested.
+  find "$LINK" -maxdepth 1 -type l -delete
+
+  LINKED=0
+  # Unquoted glob skips dotfiles, so .git/.github/.gitignore stay out.
+  for entry in "$ABS_PATH"/*; do
+    [[ -e "$entry" ]] || continue
+    base="$(basename "$entry")"
+    if [[ "$ABS_TARGET" == "$entry" || "$ABS_TARGET" == "$entry"/* ]]; then
+      echo "  skipped $base/ (holds the syntax_tests binary)"
+      continue
+    fi
+    ln -sfn "$entry" "$LINK/$base"
+    LINKED=$((LINKED + 1))
+  done
+
+  if (( LINKED == 0 )); then
+    echo "error: nothing to link from '$ABS_PATH'" >&2
+    exit 1
+  fi
+  echo "linked $LINKED entr$( ((LINKED == 1)) && echo y || echo ies ) from $ABS_PATH into $LINK"
   echo "Use \"Packages/$NAME/...\" in your YAML tests' syntax: field."
+  echo "Re-run this script after adding a new top-level file to the package."
 fi
 
 echo "Done. Binary: $BINARY"

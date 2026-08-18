@@ -17,9 +17,14 @@ YAML structure:
   tests:
     - line: "describe Some::Tag do"
       assertions:
+        # Joined with "&": all must be present, in any nesting order. A space
+        # would instead mean "nested inside", and a comma would mean OR.
         - span: "describe"
           scopes: [keyword.other.rspec.behaviour, meta.rspec.behaviour]
           nth: 0                                   # optional, 0-indexed, default 0
+        # Use a single string for subtraction, or a deliberate nesting path:
+        - span: "describe"
+          scopes: ["keyword.other.rspec.behaviour - comment"]
         - span: "Some::Tag do"
           scopes: [meta.rspec.behaviour]
     - prefix_lines:                                # optional consecutive lines
@@ -99,7 +104,9 @@ def assertion_lines(
     shadowed zone, whichever is greater).
     """
     cc_len = len(comment_char)
-    scope_str = " ".join(scopes)
+    # "&" not " ": space is a nesting path (outer to inner), so a correct set of
+    # scopes listed in the wrong order fails. "&" is order-independent AND.
+    scope_str = " & ".join(scopes)
     lines = []
 
     # One <- line per shadowed column that falls inside the span

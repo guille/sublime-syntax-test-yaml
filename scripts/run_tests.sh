@@ -9,9 +9,9 @@ usage() {
   cat <<'EOF'
 Usage: run_tests.sh [options]
 
-  --tests-dir DIR           YAML test sources (default: ./tests, env TESTS_DIR)
+  --tests-dir DIR           YAML test sources (default: ./yaml_tests, env TESTS_DIR)
   --package-tests-dir DIR   Generated .sublime-syntax-test output
-                            (default: ./package/tests, env PACKAGE_TESTS_DIR)
+                            (default: ./tests, env PACKAGE_TESTS_DIR)
   --syntax-tests-dir DIR    Where the syntax_tests binary was installed
                             (default: ./st_syntax_tests, env SYNTAX_TESTS_DIR)
   --comment-char CHAR       Fallback comment character for generated tests not
@@ -24,8 +24,8 @@ YAML test file failing to convert exits 1 without running the suite.
 EOF
 }
 
-TESTS_DIR="${TESTS_DIR:-./tests}"
-PACKAGE_TESTS_DIR="${PACKAGE_TESTS_DIR:-./package/tests}"
+TESTS_DIR="${TESTS_DIR:-./yaml_tests}"
+PACKAGE_TESTS_DIR="${PACKAGE_TESTS_DIR:-./tests}"
 SYNTAX_TESTS_DIR="${SYNTAX_TESTS_DIR:-./st_syntax_tests}"
 COMMENT_CHAR="${COMMENT_CHAR:-#}"
 
