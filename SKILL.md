@@ -53,7 +53,11 @@ guess):
    If there's no existing convention, create a `package/` directory at the
    target project's root laid out the way Sublime itself expects a package,
    e.g. `package/<Language>.sublime-syntax`. `package/tests/` is a generated
-   output directory — regenerated every run by Step 4, don't hand-edit it.
+   output directory — don't hand-edit it. Step 4 overwrites one file there per
+   `tests/*.yaml`, but it does **not** clear the directory first: renaming or
+   deleting a YAML source leaves its stale `syntax_test_*` behind, and the
+   binary keeps running it. Delete the orphan by hand when that happens (and
+   consider gitignoring `package/tests/`).
 3. **The package name** — the first path segment after `Packages/` that the
    YAML tests' `syntax:` field will reference, e.g.
    `syntax: "Packages/RSpec/RSpec.sublime-syntax"` implies package name
@@ -155,12 +159,16 @@ with that layout, it can be run with no arguments. This:
    - A trailing `--- Summary: N failure(s) detected ---` line.
 
 The script's own exit code reflects whether the underlying test run passed —
-check it instead of grepping output.
+check it instead of grepping output. A YAML file that fails to convert (bad
+YAML, a `span` that doesn't occur in its `line`) is a hard error: the run
+exits 1 without invoking the binary, rather than silently skipping that file
+and reporting green.
 
-If test files mix comment characters (some `#`, some `//`), pass
-`--comment-char` per run and batch tests by comment character, or run once
-per comment style — the parser only accepts one comment character per
-invocation.
+Test files may freely mix comment characters. Step 1 of the run records each
+generated file's `comment_char` in `package/tests/.comment_chars.json`, and
+the parser reads that manifest to pick the right character per failure, so no
+batching or per-style runs are needed. `--comment-char` remains only as the
+fallback for files with no manifest entry.
 
 ## Step 5 — Interpret failures and iterate
 

@@ -12,9 +12,14 @@ Usage:
     cat output.log | parse_syntax_test.py
     parse_syntax_test.py < output.log
     cat output.log | parse_syntax_test.py -c "//"
+    cat output.log | parse_syntax_test.py --comment-map package/tests/.comment_chars.json
 
 Options:
-    -c, --comment-char  Comment character used in syntax tests (default: #)
+    -c, --comment-char  Comment character to assume for files not covered by
+                        --comment-map (default: #)
+    --comment-map       JSON manifest written by yaml2syntaxtest.py mapping each
+                        generated test file name to its comment character. Lets a
+                        single run mix files using different comment characters.
 
 Output format:
     For each failure:
@@ -25,24 +30,37 @@ Output format:
     - Got scope(s): "..."
 """
 
+import json
+import os
 import sys
 import re
 
+HEADER_RE = re.compile(r"^(.+?):(\d+):(\d+)$")
 
-def parse_test_output(output: str, comment_char: str = "#") -> list[dict]:
+
+def parse_test_output(
+    output: str, comment_char: str = "#", comment_map: dict[str, str] | None = None
+) -> list[dict]:
+    comment_map = comment_map or {}
     failures = []
     lines = output.split("\n")
     i = 0
     while i < len(lines):
         line = lines[i]
-        if re.match(r"^(.+?):(\d+):(\d+)$", line.strip()):
+        header = HEADER_RE.match(line.strip())
+        if header:
             block_lines = [line]
             i += 1
             while i < len(lines) and lines[i].strip() != "":
                 block_lines.append(lines[i])
                 i += 1
 
-            failure = parse_failure_line(block_lines, comment_char)
+            # The binary reports absolute paths; the manifest is keyed by the
+            # generated file's name.
+            block_comment = comment_map.get(
+                os.path.basename(header.group(1)), comment_char
+            )
+            failure = parse_failure_line(block_lines, block_comment)
             if failure:
                 failures.append(failure)
         else:
@@ -58,7 +76,7 @@ def parse_failure_line(lines: list[str], comment_char: str = "#") -> dict | None
     result = {}
 
     first_line = lines[0].strip()
-    match = re.match(r"^(.+?):(\d+):(\d+)$", first_line)
+    match = HEADER_RE.match(first_line)
     if not match:
         return None
 
@@ -176,9 +194,7 @@ def format_for_llm(failure: dict) -> str:
     lines.append(f'- File under test: "{failure.get("file_under_test", "")}"')
     lines.append(f'- Text of line under test: "{failure.get("text_of_line", "")}"')
     lines.append(f'- Span under test: "{failure.get("span_under_test", "")}"')
-    lines.append(
-        f'- Text that did not match (expected scope): "{failure.get("expected_scopes", "")}"'
-    )
+    lines.append(f'- Expected scope(s): "{failure.get("expected_scopes", "")}"')
     lines.append(f'- Got scope(s): "{failure.get("got_scopes", "")}"')
     return "\n".join(lines)
 
@@ -193,13 +209,25 @@ def main():
         "-c",
         "--comment-char",
         default="#",
-        help="Comment character used in syntax tests (default: #)",
+        help="Comment character to assume for files not in --comment-map (default: #)",
+    )
+    parser.add_argument(
+        "--comment-map",
+        help="JSON manifest from yaml2syntaxtest.py mapping test file name -> comment char",
     )
     args = parser.parse_args()
 
+    comment_map = {}
+    if args.comment_map:
+        try:
+            with open(args.comment_map, encoding="utf-8") as f:
+                comment_map = json.load(f)
+        except (OSError, ValueError) as exc:
+            sys.exit(f"Error: could not read comment map {args.comment_map}: {exc}")
+
     output = sys.stdin.read()
 
-    failures = parse_test_output(output, args.comment_char)
+    failures = parse_test_output(output, args.comment_char, comment_map)
 
     if not failures:
         print("No failures detected.")

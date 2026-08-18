@@ -14,11 +14,13 @@ Usage: run_tests.sh [options]
                             (default: ./package/tests, env PACKAGE_TESTS_DIR)
   --syntax-tests-dir DIR    Where the syntax_tests binary was installed
                             (default: ./st_syntax_tests, env SYNTAX_TESTS_DIR)
-  --comment-char CHAR       Comment character used in the generated tests
+  --comment-char CHAR       Fallback comment character for generated tests not
+                            covered by the generator's manifest
                             (default: #, env COMMENT_CHAR)
   -h, --help                Show this help
 
-Exit code matches the underlying syntax_tests binary's exit code.
+Exit code matches the underlying syntax_tests binary's exit code, except that a
+YAML test file failing to convert exits 1 without running the suite.
 EOF
 }
 
@@ -55,7 +57,15 @@ if [[ ! -d "$SYNTAX_TESTS_DIR/Data/Packages" ]] || ! find "$SYNTAX_TESTS_DIR/Dat
        "re-run setup_syntax_tests.sh with a package path if this wasn't intentional." >&2
 fi
 
-"$SCRIPT_DIR/yaml2syntaxtest.py" "$TESTS_DIR" "$PACKAGE_TESTS_DIR"
+if ! "$SCRIPT_DIR/yaml2syntaxtest.py" "$TESTS_DIR" "$PACKAGE_TESTS_DIR"; then
+  echo "error: test generation failed - not running the suite, since skipping a" >&2
+  echo "       test file would make the run look green." >&2
+  exit 1
+fi
+
+COMMENT_MAP="$PACKAGE_TESTS_DIR/.comment_chars.json"
+PARSE_ARGS=(-c "$COMMENT_CHAR")
+[[ -f "$COMMENT_MAP" ]] && PARSE_ARGS+=(--comment-map "$COMMENT_MAP")
 
 RAW_LOG="$(mktemp)"
 trap 'rm -f "$RAW_LOG"' EXIT
@@ -64,7 +74,7 @@ set +e
 ST_EXIT=$?
 set -e
 
-"$SCRIPT_DIR/parse_syntax_test.py" -c "$COMMENT_CHAR" < "$RAW_LOG"
+"$SCRIPT_DIR/parse_syntax_test.py" "${PARSE_ARGS[@]}" < "$RAW_LOG"
 
 echo
 echo "(underlying syntax_tests exit code: $ST_EXIT)"

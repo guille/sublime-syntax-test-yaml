@@ -32,8 +32,15 @@ YAML structure:
 Usage:
   python yaml2syntaxtest.py input.yaml                        # prints to stdout
   python yaml2syntaxtest.py input.yaml output.rb              # writes to file output.rb
+  python yaml2syntaxtest.py input_dir output_dir              # processes every yaml file
+
+In directory mode a `.comment_chars.json` manifest is written alongside the
+generated tests, mapping each generated file to the comment character it was
+written with, for parse_syntax_test.py --comment-map. Any file that fails to
+convert is reported on stderr and makes the whole run exit non-zero.
 """
 
+import json
 import os
 import sys
 import textwrap
@@ -47,6 +54,14 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Core helpers
 # ---------------------------------------------------------------------------
+
+# Kept in sync by hand with parse_syntax_test.py — the two are standalone uv
+# scripts and can't import each other.
+COMMENT_MAP_NAME = ".comment_chars.json"
+
+
+def comment_map_path(output_dir: str) -> str:
+    return os.path.join(output_dir, COMMENT_MAP_NAME)
 
 
 def find_span(line: str, span: str, nth: int = 0):
@@ -106,7 +121,8 @@ def assertion_lines(
 # ---------------------------------------------------------------------------
 
 
-def convert(yaml_text: str) -> str:
+def convert(yaml_text: str) -> tuple[str, str]:
+    """Return (generated test file contents, comment char it was written with)."""
     data = yaml.safe_load(yaml_text)
 
     # --- header fields ---
@@ -173,7 +189,7 @@ def convert(yaml_text: str) -> str:
 
         out.append("")
 
-    return "\n".join(out)
+    return "\n".join(out), comment
 
 
 # ---------------------------------------------------------------------------
@@ -213,26 +229,42 @@ def main():
         if not yaml_files:
             sys.exit(f"Error: no .yaml or .yml files found in {input_path}")
 
+        comment_chars = {}
+        errors = 0
+
         for yaml_file in sorted(yaml_files):
             try:
                 with open(yaml_file, encoding="utf-8") as f:
                     yaml_text = f.read()
-            except FileNotFoundError:
-                print(f"Warning: file not found: {yaml_file}")
+            except OSError as exc:
+                print(f"Error reading {yaml_file}: {exc}", file=sys.stderr)
+                errors += 1
                 continue
 
             try:
-                result = convert(yaml_text)
+                result, comment = convert(yaml_text)
             except (ValueError, yaml.YAMLError) as exc:
-                print(f"Error processing {yaml_file}: {exc}")
+                print(f"Error processing {yaml_file}: {exc}", file=sys.stderr)
+                errors += 1
                 continue
 
             basename = os.path.splitext(os.path.basename(yaml_file))[0]
-            out_file = os.path.join(output_path, f"syntax_test_{basename}")
+            out_name = f"syntax_test_{basename}"
+            out_file = os.path.join(output_path, out_name)
             with open(out_file, "w", encoding="utf-8") as f:
                 f.write(result)
+            comment_chars[out_name] = comment
             print(f"Written to {out_file}")
 
+        # Consumed by parse_syntax_test.py --comment-map, so failures in files
+        # using different comment characters can be parsed in a single run.
+        with open(comment_map_path(output_path), "w", encoding="utf-8") as f:
+            json.dump(comment_chars, f, indent=2, sort_keys=True)
+
+        if errors:
+            # Exiting non-zero matters: a silently skipped test file would
+            # otherwise let the whole suite report green.
+            sys.exit(f"Error: {errors} of {len(yaml_files)} test file(s) failed to convert")
         sys.exit(0)
 
     try:
@@ -242,7 +274,7 @@ def main():
         sys.exit(f"Error: file not found: {input_path}")
 
     try:
-        result = convert(yaml_text)
+        result, _ = convert(yaml_text)
     except (ValueError, yaml.YAMLError) as exc:
         sys.exit(f"Error: {exc}")
 
