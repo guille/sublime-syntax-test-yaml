@@ -169,21 +169,15 @@ def parse_failure_line(lines: list[str], comment_char: str = "#") -> dict | None
         idx = act_line.find(" | ")
         if idx == -1:
             continue
-        left_spaces = len(act_line[:idx])
         right = act_line[idx + 3 :]
 
         caret_match = re.match(r"^(\s*)(\^*)\s*(.*)$", right)
         if caret_match:
-            right_padding = len(caret_match.group(1))
-            act_start = left_spaces + right_padding
+            # Carets are aligned to the source text after the " | " gutter.
+            act_start = len(caret_match.group(1))
             act_len = len(caret_match.group(2))
-            act_scope = caret_match.group(3).strip()
-
-            for check_col in [col - 1, col, col + 1]:
-                if act_start <= check_col < act_start + act_len:
-                    got_scope = act_scope
-                    break
-            if got_scope:
+            if act_start <= col - 1 < act_start + act_len:
+                got_scope = caret_match.group(3).strip()
                 break
 
     result["got_scopes"] = got_scope
