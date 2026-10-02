@@ -82,8 +82,20 @@ def split_lines(source: str) -> list[str]:
 
 
 class Dumper:
-    def __init__(self, syntax_path: str, comment_char: str, syntax_tests_dir: str | None = None):
+    def __init__(
+        self,
+        syntax_path: str,
+        comment_char: str,
+        syntax_tests_dir: str | None = None,
+        as_package: str | None = None,
+    ):
+        """
+        as_package dumps the .sublime-syntax files next to syntax_path as that
+        package, in place of the installed package's own syntax files: e.g. an
+        older revision of an installed syntax, without both being loaded.
+        """
         self.syntax_path = os.path.abspath(syntax_path)
+        self.as_package = as_package
         self.comment_char = comment_char
         self.syntax_tests_dir = os.path.abspath(
             syntax_tests_dir or os.environ.get("SYNTAX_TESTS_DIR", "st_syntax_tests")
@@ -100,20 +112,40 @@ class Dumper:
         shutil.copy2(binary, self._root)
         packages = os.path.join(self._root, "Data", "Packages")
 
-        default = os.path.join(self.syntax_tests_dir, "Data", "Packages", "Default")
-        if os.path.isdir(default):
-            os.makedirs(packages)
-            os.symlink(default, os.path.join(packages, "Default"))
-
-        # Only the package's syntaxes, not its tests: the binary runs every
+        # Mirror every installed package so `extends` and `embed` across
+        # packages resolve, but leave out their tests: the binary runs every
         # test file it finds under Packages/.
-        syntax_dir = os.path.dirname(self.syntax_path)
-        self.package = os.path.basename(syntax_dir)
+        os.makedirs(packages)
+        real_packages = os.path.join(self.syntax_tests_dir, "Data", "Packages")
+        syntax_real = os.path.realpath(self.syntax_path)
+        as_package = self.as_package
+        self.package = as_package
+        for pkg in sorted(os.listdir(real_packages)) if os.path.isdir(real_packages) else []:
+            src = os.path.join(real_packages, pkg)
+            if not os.path.isdir(src):
+                continue
+            os.makedirs(os.path.join(packages, pkg))
+            for name in os.listdir(src):
+                entry = os.path.join(src, name)
+                if name == "tests" or name.startswith("syntax_test_"):
+                    continue
+                if pkg == as_package and name.endswith(".sublime-syntax"):
+                    continue
+                if as_package is None and os.path.realpath(entry) == syntax_real:
+                    self.package = pkg
+                os.symlink(os.path.realpath(entry), os.path.join(packages, pkg, name))
+
+        # Not linked by the test skill's setup (or replacing it): use the
+        # syntax's own directory, named after it unless as_package says otherwise.
+        if self.package is None or as_package is not None:
+            syntax_dir = os.path.dirname(self.syntax_path)
+            self.package = as_package or os.path.basename(syntax_dir)
+            os.makedirs(os.path.join(packages, self.package), exist_ok=True)
+            for name in os.listdir(syntax_dir):
+                link = os.path.join(packages, self.package, name)
+                if name.endswith(".sublime-syntax") and not os.path.lexists(link):
+                    os.symlink(os.path.join(syntax_dir, name), link)
         self._package_dir = os.path.join(packages, self.package)
-        os.makedirs(self._package_dir)
-        for name in os.listdir(syntax_dir):
-            if name.endswith(".sublime-syntax"):
-                os.symlink(os.path.join(syntax_dir, name), os.path.join(self._package_dir, name))
         return self
 
     def __exit__(self, *exc):
@@ -165,6 +197,7 @@ class Dumper:
             newline_col = len(all_lines[idx][src_line])
             cols = columns[idx][src_line]
             for start, end, scopes in segments:
+                # Reported tokens are whole, even past the asserted columns.
                 for c in range(start, min(end, newline_col + 1)):
                     cols[c] = scopes
 
@@ -196,7 +229,8 @@ class Dumper:
                 )
             out.append(line)
             line_map[len(out)] = li
-            # Columns 0..len(line), the last one being the newline. The first
+            # Columns 0..len(line), the last one being the newline; carets past
+            # it would spill into the next line. The first
             # len(cc) columns sit under the comment token, so they need <- lines.
             # Their indent must repeat the source's leading tabs, or the binary
             # rejects the file for mismatched whitespace.

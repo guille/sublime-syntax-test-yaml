@@ -8,7 +8,7 @@ description: >
   Sublime Text, create or edit a .sublime-syntax file, define scopes or
   contexts for a Sublime Text package, or debug a failing syntax_test /
   .sublime-syntax-test.
-license: Unlicense (public domain) — see LICENSE.md
+license: Unlicense (public domain)
 compatibility: >
   Requires bash, and either curl or wget, plus network access to
   download.sublimetext.com to fetch Sublime's official syntax_tests binary
@@ -257,18 +257,8 @@ causes, roughly in order of likelihood — see
 
 Make one small change to the `.sublime-syntax` file, rerun Step 4, and watch
 the failure count trend to zero. If the parsed output is confusing for a
-particular case, dump the actual scopes of a whole file rather than guessing
-from column-aligned caret text:
-
-```bash
-"$SKILL_ROOT/scripts/dump_scopes.py" --syntax X.sublime-syntax -c '//' file.x
-"$SKILL_ROOT/scripts/dump_scopes.py" --syntax X.sublime-syntax -c '//' --yaml --line 12 file.x
-```
-
-The first prints every token with its full scope stack (`--json` for
-scripts). The second prints a ready-to-paste YAML test block asserting
-line 12 as it scopes *today*, with the lines before it as `prefix_lines`:
-review it and fix any scope that is wrong before adding it to a test file.
+particular case, write a short throwaway script against the raw binary
+output rather than guessing from column-aligned caret text.
 
 ## Step 6 — Confirm a green run is actually green
 
@@ -297,10 +287,7 @@ mutation. Expect a small shortfall when source lines under test themselves
 contain `^` or `<-` — an exponent operator or a regex literal inflates the
 first count — so account for those before concluding an assertion is dead.
 
-## Notes on `mise.toml`
-
-This repo's `mise.toml` tasks only work inside this skill's own checkout. In a
-target project, call the scripts from `$SKILL_ROOT` directly as shown above.
+## CI
 
 For CI, skip these scripts: with `tests/` tracked, the official
 `SublimeText/syntax-test-action@v2` runs the suite directly.

@@ -28,6 +28,8 @@ I've been copy-pasting these scripts and the `references/` directory into the pr
 
 Note the Python scripts require [uv](https://astral.sh/uv).
 
+Update Oct 2026: I added a new SKILL to "fuzz" a syntax, with different techniques to find bugs.
+
 ## Disclaimers
 
 Beyond the usual all-caps disclaimer in the LICENSE, note that I have only tried one version of the syntax test binary (ST4200). The code is also completely AI-generated, minus one off-by-one error that I fixed by hand. It's a mess, don't even look.
