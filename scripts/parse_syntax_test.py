@@ -36,13 +36,23 @@ import sys
 import re
 
 HEADER_RE = re.compile(r"^(.+?):(\d+):(\d+)$")
+# stderr can interleave mid-line with stdout, so match anywhere in the line.
+ERROR_RE = re.compile(r"(?i)error\b.*$")
+SCOPE_MISMATCH = "error: scope does not match"
 
 
 def parse_test_output(
     output: str, comment_char: str = "#", comment_map: dict[str, str] | None = None
-) -> list[dict]:
+) -> tuple[list[dict], list[dict]]:
+    """Return (scope mismatch failures, every other error the binary reported).
+
+    Anything that isn't a scope mismatch, e.g. a syntax that fails to load,
+    still fails the run, so it must not be dropped.
+    """
     comment_map = comment_map or {}
     failures = []
+    errors = []
+    current_file = ""
     lines = output.split("\n")
     i = 0
     while i < len(lines):
@@ -55,6 +65,12 @@ def parse_test_output(
                 block_lines.append(lines[i])
                 i += 1
 
+            if len(block_lines) > 1 and block_lines[1].strip() != SCOPE_MISMATCH:
+                errors.append(
+                    {"file": header.group(0), "message": block_lines[1].strip()}
+                )
+                continue
+
             # The binary reports absolute paths; the manifest is keyed by the
             # generated file's name.
             block_comment = comment_map.get(
@@ -63,10 +79,19 @@ def parse_test_output(
             failure = parse_failure_line(block_lines, block_comment)
             if failure:
                 failures.append(failure)
-        else:
-            i += 1
+            continue
 
-    return failures
+        if line.startswith("Running: "):
+            current_file = line.removeprefix("Running: ").strip()
+        elif line.strip() == current_file:
+            pass  # the binary echoes the file name after "Running:"
+        elif error := ERROR_RE.search(line):
+            entry = {"file": current_file, "message": error.group(0).strip()}
+            if entry not in errors:
+                errors.append(entry)
+        i += 1
+
+    return failures, errors
 
 
 def parse_failure_line(lines: list[str], comment_char: str = "#") -> dict | None:
@@ -223,18 +248,28 @@ def main():
 
     output = sys.stdin.read()
 
-    failures = parse_test_output(output, args.comment_char, comment_map)
+    failures, errors = parse_test_output(output, args.comment_char, comment_map)
 
-    if not failures:
+    if not failures and not errors:
         print("No failures detected.")
         return
+
+    if errors:
+        print("Errors (not scope mismatches; these tests may not have run at all):")
+        for error in errors:
+            where = f'"{error["file"]}": ' if error["file"] else ""
+            print(f"- {where}{error['message']}")
+        if failures:
+            print("\n" + "=" * 40 + "\n")
 
     for i, failure in enumerate(failures, 1):
         if i > 1:
             print("\n" + "=" * 40 + "\n")
         print(format_for_llm(failure))
 
-    print(f"\n--- Summary: {len(failures)} failure(s) detected ---")
+    print(
+        f"\n--- Summary: {len(failures)} failure(s), {len(errors)} error(s) detected ---"
+    )
 
 
 if __name__ == "__main__":

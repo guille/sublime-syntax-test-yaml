@@ -1,16 +1,12 @@
 SCOPE NAMING GUIDELINES
 ======================
 
-Purpose
--------
-- Provide concise, actionable guidelines for naming scopes in syntax definitions and color schemes.
-- Maintain compatibility with Sublime Text / TextMate grammars and make color schemes broadly usable.
-
 Principles
 ----------
 - Scopes are dotted strings, ordered least-to-most specific. Example: `keyword.control.php`.
 - The syntax name (language) should be the last segment of a scope when applicable: `keyword.control.ruby`.
-- Prefer the smallest correct change: create clear, predictable scopes that other packages and themes can match.
+- Prefer a small, predictable set of scopes that existing color schemes already style over many
+  highly specific variants.
 
 General Rules
 -------------
@@ -73,33 +69,6 @@ Naming Conventions & Examples
   - Invoked function names: `variable.function` (definitions should be `entity.name.function`)
   - Language-reserved: `variable.language`
 
-Color Scheme Guidance
----------------------
-- Style broad selectors before specific ones. Avoid over-specific selectors that only suit one syntax.
-- Minimal recommended coverage (baseline selectors every theme should provide):
-  - `entity.name`, `entity.other.inherited-class`, `entity.name.section`, `entity.name.tag`,
-    `entity.other.attribute-name`
-  - `variable`, `variable.language`, `variable.parameter`, `variable.function`
-  - `constant`, `constant.numeric`, `constant.language`, `constant.character.escape`
-  - `storage.type`, `storage.modifier`
-  - `support`, `keyword`, `keyword.control`, `keyword.operator`, `keyword.declaration`
-  - `string`, `comment`, `invalid`, `invalid.deprecated`
-- Do not rely on coloring specific `entity.name.*` entries for new or unknown entity types. Provide
-  a base `entity.name` color and override only `entity.name.tag` and `entity.name.section` where needed.
-
-Practical Tips
---------------
-- Keep scope names predictable and language-neutral where possible. Use the language as the final
-  segment when needed (e.g. `.python`, `.php`).
-- Use `meta.*` for tooling and grouping; use specific child scopes for visual styling.
-- Avoid excessive fragmentation: prefer a clear and limited set of scopes rather than many highly
-  specific variants that make themes brittle.
-- Test syntaxes with several popular color schemes to ensure reasonable defaults are styled.
-
-References
-----------
-- Based on Sublime Text scope naming recommendations and TextMate grammar conventions.
-
 Example
 -------
 For a PHP `if` keyword and condition expression you might use:
@@ -111,5 +80,3 @@ meta.group                          # the condition group
 variable.other                        # variables inside condition
 punctuation.definition.group.end     # ")"
 ```
-
-End of guidelines

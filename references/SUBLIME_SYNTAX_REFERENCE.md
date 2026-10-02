@@ -1,12 +1,5 @@
 **Sublime Syntax Reference**
 
-Purpose
-
-This is a compact local reference intended for an LLM to generate or edit
-.sublime-syntax files. It summarises the YAML structure, keys, behaviours,
-examples and common pitfalls. Use it as a quick cheat-sheet when authoring
-syntaxes for Sublime Text.
-
 **Overview**
 
 - Syntax files are YAML (use `%YAML 1.2` header) named `*.sublime-syntax`.
@@ -163,16 +156,13 @@ contexts:
 - Multiple inheritance: allowed but parents must be derived from the same base
   and are processed in order.
 
-
-
 **Performance & Practical Tips**
 
 - Keep regexes single-line; multi-line constructs should be handled via
   branching, embedding, or explicit contexts.
 - Branches cause reprocessing and may rewind up to 128 lines on `fail`.
   Order branch contexts by likelihood for performance.
-- Meta patterns must be listed first in contexts.
-- Quote regexes when they contain YAML-sensitive characters.
+- Avoid lookbehinds; they are slow.
 - Prefer minimal, precise regexes to avoid accidental matches.
 - Use `prototype` to avoid repeating common constructs (comments, literals).
 
@@ -191,13 +181,9 @@ contexts:
 If possible, author new syntaxes with `version: 2` to avoid these legacy
 issues.
 
-Try to avoid things like lookbehinds, they are bad for performance.
-
 **Troubleshooting Checklist**
 
-1. Is `main` context present? If not, add it.
-2. Are regexes single-line and correctly quoted where needed?
-3. Did you forget to `pop` after `push`ing a temporary context?
-4. Use `SYNTAX TEST` files to assert scopes rather than manual inspection.
-5. If embedding other syntaxes, ensure you use `with_prototype`/`escape`
+1. Are regexes single-line and correctly quoted where needed?
+2. Did you forget to `pop` after `push`ing a temporary context?
+3. If embedding other syntaxes, ensure you use `with_prototype`/`escape`
    patterns so the parent syntax can regain control.

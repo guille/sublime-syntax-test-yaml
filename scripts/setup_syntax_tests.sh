@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download and extract Sublime Text's official syntax_tests binary, and
-# optionally symlink a package directory into its Data/Packages/ so
+# optionally symlink a package's syntaxes and tests/ into its Data/Packages/ so
 # `Packages/<name>/...` resolves in YAML test `syntax:` fields.
 #
 # Usage: setup_syntax_tests.sh [build] [target_dir] [package_path] [package_name]
@@ -13,7 +13,8 @@ Usage: setup_syntax_tests.sh [build] [target_dir] [package_path] [package_name]
   build         Sublime Text build number (default: 4200, env SUBLIME_BUILD)
   target_dir    Where to download/extract the binary (default: ./st_syntax_tests,
                 env SYNTAX_TESTS_DIR)
-  package_path  Path to a package directory to link in for testing (optional)
+  package_path  Package whose top-level *.sublime-syntax files and tests/ are
+                linked in for testing (optional)
   package_name  Name to link it under, i.e. Packages/<package_name>/...
                 (default: basename of package_path)
 
@@ -111,14 +112,10 @@ if [[ -n "$PACKAGE_PATH" ]]; then
   mkdir -p "$PACKAGES_DIR"
   LINK="$PACKAGES_DIR/$NAME"
 
-  ABS_TARGET="$(cd "$TARGET_DIR" && pwd)"
-
-  # Link each top-level entry into a real directory rather than symlinking
-  # package_path wholesale. When package_path is the repo root (the usual layout
-  # for a Sublime package), a whole-directory symlink puts target_dir back
-  # underneath Data/Packages/<name>: the binary then reaches its own
-  # Data/Packages through the link, warns "has been seen before, skipping (using
-  # inode)" and exits 1 even when every assertion passed.
+  # Link only what the tests need: the package's top-level syntaxes and its
+  # tests/. Linking the whole repo drags in the binary's own directory (which
+  # makes the binary exit 1 on a green run) and whatever else lives there,
+  # e.g. reference syntaxes that fail to load or dangling submodule links.
   #
   # -L as well as -e: a dangling symlink (package_path since moved or renamed)
   # fails -e, and the bare `ln -s` below would then die with "File exists".
@@ -126,29 +123,23 @@ if [[ -n "$PACKAGE_PATH" ]]; then
     rm "$LINK"
   fi
   mkdir -p "$LINK"
-  # Drop stale entry links so a file removed from the package stops being tested.
+  # Drop stale links so a file removed from the package stops being tested.
   find "$LINK" -maxdepth 1 -type l -delete
 
   LINKED=0
-  # Unquoted glob skips dotfiles, so .git/.github/.gitignore stay out.
-  for entry in "$ABS_PATH"/*; do
+  for entry in "$ABS_PATH"/*.sublime-syntax "$ABS_PATH/tests"; do
     [[ -e "$entry" ]] || continue
-    base="$(basename "$entry")"
-    if [[ "$ABS_TARGET" == "$entry" || "$ABS_TARGET" == "$entry"/* ]]; then
-      echo "  skipped $base/ (holds the syntax_tests binary)"
-      continue
-    fi
-    ln -sfn "$entry" "$LINK/$base"
+    ln -sfn "$entry" "$LINK/$(basename "$entry")"
     LINKED=$((LINKED + 1))
   done
 
   if (( LINKED == 0 )); then
-    echo "error: nothing to link from '$ABS_PATH'" >&2
+    echo "error: no *.sublime-syntax or tests/ found in '$ABS_PATH'" >&2
     exit 1
   fi
   echo "linked $LINKED entr$( ((LINKED == 1)) && echo y || echo ies ) from $ABS_PATH into $LINK"
   echo "Use \"Packages/$NAME/...\" in your YAML tests' syntax: field."
-  echo "Re-run this script after adding a new top-level file to the package."
+  echo "Re-run this script after adding a new .sublime-syntax file."
 fi
 
 echo "Done. Binary: $BINARY"

@@ -17,8 +17,6 @@ YAML structure:
   tests:
     - line: "describe Some::Tag do"
       assertions:
-        # Joined with "&": all must be present, in any nesting order. A space
-        # would instead mean "nested inside", and a comma would mean OR.
         - span: "describe"
           scopes: [keyword.other.rspec.behaviour, meta.rspec.behaviour]
           nth: 0                                   # optional, 0-indexed, default 0
@@ -82,7 +80,7 @@ def find_span(line: str, span: str, nth: int = 0):
 
 
 def assertion_lines(
-    comment_char: str, col_start: int, col_end: int, scopes: list[str]
+    comment_char: str, source: str, col_start: int, col_end: int, scopes: list[str]
 ) -> list[str]:
     """
     Return one or more assertion lines covering [col_start, col_end).
@@ -111,7 +109,10 @@ def assertion_lines(
 
     # One <- line per shadowed column that falls inside the span
     for col in range(col_start, min(col_end, cc_len)):
-        lines.append(" " * col + comment_char + " <- " + scope_str)
+        # The binary rejects a <- line whose indent doesn't repeat the source
+        # line's leading tabs.
+        indent = "".join(ch if ch == "\t" else " " for ch in source[:col])
+        lines.append(indent + comment_char + " <- " + scope_str)
 
     # One caret line for the unshadowed remainder of the span (if any)
     caret_start = max(col_start, cc_len)
@@ -192,7 +193,7 @@ def convert(yaml_text: str) -> tuple[str, str]:
                 )
 
             col_start, col_end = result
-            out.extend(assertion_lines(comment, col_start, col_end, scopes))
+            out.extend(assertion_lines(comment, source, col_start, col_end, scopes))
 
         out.append("")
 

@@ -3,8 +3,8 @@ description = "One-time: download Sublime's syntax_tests binary and link this pa
 run         = "./scripts/setup_syntax_tests.sh"
 
 [tasks.gen-tests]
-description = "Convert tests/*.yaml into package/tests/syntax_test_* (standalone, no binary needed)"
-run         = "./scripts/yaml2syntaxtest.py tests package/tests"
+description = "Convert yaml_tests/*.yaml into tests/syntax_test_* (standalone, no binary needed)"
+run         = "./scripts/yaml2syntaxtest.py yaml_tests tests"
 
 [tasks.test]
 description = "Generate + run syntax tests"

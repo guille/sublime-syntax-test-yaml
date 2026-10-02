@@ -13,7 +13,7 @@ compatibility: >
   Requires bash, and either curl or wget, plus network access to
   download.sublimetext.com to fetch Sublime's official syntax_tests binary
   (Linux x64 only; pinned to build 4200 by default, overridable). Requires
-  uv (https://astral.sh/uv) to run the two bundled Python scripts without
+  uv (https://astral.sh/uv) to run the bundled Python scripts without
   manual venv setup.
 ---
 
@@ -43,6 +43,12 @@ Everything below other than Step 3's one-time setup happens in the
 Find this skill's own root (the directory containing this file) via its own
 path once invoked; call it `$SKILL_ROOT` below.
 
+Always run the scripts from `$SKILL_ROOT/scripts/`. Never copy them into the
+target project, and don't wire up `mise` tasks or Makefile targets around
+them: copies go stale and silently miss fixes made here. The target project
+only ever holds the syntax, `yaml_tests/`, the generated `tests/`, and the
+gitignored `st_syntax_tests/`.
+
 ## Step 0 — Establish language, file locations, and package name
 
 If the request doesn't already make these obvious, ask the user (don't
@@ -56,6 +62,7 @@ guess):
    ```
    <Language>.sublime-syntax    # repo root, alongside Comments.tmPreferences etc.
    tests/syntax_test_*          # generated; tracked in git
+   tests/.comment_chars.json    # generated manifest for the parser; gitignored
    yaml_tests/*.yaml            # YAML sources for this DSL; tracked in git
    st_syntax_tests/             # the test binary; gitignored
    ```
@@ -96,7 +103,7 @@ Before writing or editing the syntax file, read (paths relative to
 
 ## Step 2 — Write YAML tests
 
-Tests live in the target project's `tests/*.yaml` (one file per logical
+Tests live in the target project's `yaml_tests/*.yaml` (one file per logical
 group is fine). DSL, by example:
 
 ```yaml
@@ -110,10 +117,18 @@ tests:
       - span: "Some::Tag do"
         scopes: [meta.rspec.behaviour]
         nth: 0                                   # optional, 0-indexed, default 0
+  - prefix_lines: ["foo = bar \\"]                # optional, emitted verbatim before `line`
+    line: "    baz"
+    assertions:
+      - span: "baz"
+        scopes: [meta.continuation]
 ```
 
 `span` is matched literally against `line`; `nth` picks which occurrence when
-it appears more than once (e.g. repeated `.` operators). Full worked
+it appears more than once (e.g. repeated `.` operators). `prefix_lines` are
+emitted directly above `line` with nothing in between, for constructs that
+depend on contiguous lines (e.g. backslash continuations); assertions still
+apply only to `line`. Full worked
 examples, including a `comment_char: "//"` variant for C-style languages,
 are in `examples/yaml/single_char_comment.yaml` and
 `examples/yaml/double_char_comment.yaml`.
@@ -144,12 +159,8 @@ Three consequences worth knowing, all verified against the build-4200 binary:
 - **`a, b` is a near-useless assertion.** `bogus.zzz, string.quoted.double`
   *passes*, because OR is satisfied by the half that matches. Never hand-write
   a comma-separated scope string hoping for set semantics.
-- **Don't use `>` at all yet.** It is documented, but it only exists in build
-  4205, which is a dev build and not public at time of writing. On 4200 a `>`
-  selector never matched — spaced, unspaced, or where the two scopes are
-  provably adjacent — while the equivalent descendant selector passed. It fails
-  silently as a plain non-match, so it reads like a syntax bug rather than an
-  unsupported operator.
+- **Don't use `>`.** It needs build 4205 (unreleased dev build); on 4200 it
+  silently never matches, which reads like a syntax bug.
 - **Subtraction composes safely with the list form**, since `-` binds tighter
   than `&`. Both `scopes: [string.quoted.double.expr, "- comment"]` and a
   single `["string.quoted.double.expr - comment"]` assert "is a string and is
@@ -179,29 +190,16 @@ All arguments are optional:
 |---|---|---|
 | 1st arg or `SUBLIME_BUILD` | `4200` | Sublime Text build number for the test binary. `4200` is the only build this toolset has actually been verified against — only change it if there's a specific reason to. |
 | 2nd arg or `SYNTAX_TESTS_DIR` | `./st_syntax_tests` | Where to download/extract the binary (relative to the current directory, i.e. the target project). |
-| 3rd arg | *(none)* | Path to the package to test — with the Step 0 layout this is the repo root, `.`. If given, `Data/Packages/<package_name>` is created and each of its top-level entries symlinked in. |
+| 3rd arg | *(none)* | Path to the package to test — with the Step 0 layout this is the repo root, `.`. If given, `Data/Packages/<package_name>` is created and the package's top-level `*.sublime-syntax` files and `tests/` are symlinked into it. |
 | 4th arg | `basename` of the 3rd arg | Explicit name for that directory — must match what the YAML `syntax:` fields expect (Step 0.3). |
 
-The 3rd arg is linked **entry by entry**, not as one symlink to the whole
-directory, and the directory holding the binary is skipped. That is what lets
-`st_syntax_tests/` live inside the repo root while the repo root is itself the
-package. Symlinking the root wholesale instead puts the binary's own
-`Data/Packages` back underneath `Data/Packages/<name>`; the binary then reaches
-it through the link and prints
+Never link anything into `Data/Packages` by hand. Symlinking the package root
+wholesale makes the binary find its own `Data/Packages` again ("has been seen
+before, skipping (using inode)") and exit 1 on a green run, and it also drags
+in reference syntaxes or dangling links that happen to live in the repo.
 
-```
-scan: .../Data/Packages/<name>/st_syntax_tests/Data/Packages has been seen
-before, skipping (using inode) previous path: .../Data/Packages
-```
-
-and **exits 1 even though every assertion passed**. Since `run_tests.sh`
-propagates that exit code, a fully green suite reports as a failure with no
-failure blocks to explain it — check for this whenever the parsed output says
-"No failures detected" but the exit code is 1.
-
-Because entries are linked individually, re-run this script after adding a new
-top-level file to the package. Re-running is safe, cheap and idempotent: it
-skips the download if the binary is present, refreshes the entry links, and
+Re-run this script after adding a new `.sublime-syntax` file. Re-running is safe, cheap and idempotent: it
+skips the download if the binary is present, refreshes the links, and
 prunes links whose source is gone (set `FORCE=1` to force re-download). This
 script only supports Linux x64 (Sublime doesn't publish this test binary for
 other platforms); network access to `download.sublimetext.com` is required
@@ -211,14 +209,14 @@ the first time.
 
 ```bash
 bash "$SKILL_ROOT/scripts/run_tests.sh" \
-  --tests-dir yaml_tests --package-tests-dir tests --comment-char "//"
+  --tests-dir yaml_tests --package-tests-dir tests
 ```
 
 Defaults are `./yaml_tests`, `./tests` and `./st_syntax_tests`, matching Step
 0's layout, so when already standing in the target project root it can be run
 with no arguments. This:
 
-1. Converts every `tests/*.yaml` into `package/tests/syntax_test_*`.
+1. Converts every `yaml_tests/*.yaml` into `tests/syntax_test_*`.
 2. Runs Sublime's `syntax_tests` binary.
 3. Pipes the result through `scripts/parse_syntax_test.py`, printing one
    block per failure:
@@ -227,7 +225,11 @@ with no arguments. This:
    - Span under test
    - Expected scope(s)
    - Got scope(s)
-   - A trailing `--- Summary: N failure(s) detected ---` line.
+   - A trailing `--- Summary: N failure(s), M error(s) detected ---` line.
+
+   Anything else the binary reports as an error (a syntax that fails to load,
+   a missing base syntax for `extends`) is listed first under "Errors". Those
+   tests may not have run at all, so fix errors before reading failures.
 
 The script's own exit code reflects whether the underlying test run passed —
 check it instead of grepping output. A YAML file that fails to convert (bad
@@ -235,11 +237,8 @@ YAML, a `span` that doesn't occur in its `line`) is a hard error: the run
 exits 1 without invoking the binary, rather than silently skipping that file
 and reporting green.
 
-Test files may freely mix comment characters. Step 1 of the run records each
-generated file's `comment_char` in `package/tests/.comment_chars.json`, and
-the parser reads that manifest to pick the right character per failure, so no
-batching or per-style runs are needed. `--comment-char` remains only as the
-fallback for files with no manifest entry.
+Test files may freely mix comment characters; each file's `comment_char` is
+picked up automatically.
 
 ## Step 5 — Interpret failures and iterate
 
@@ -258,8 +257,18 @@ causes, roughly in order of likelihood — see
 
 Make one small change to the `.sublime-syntax` file, rerun Step 4, and watch
 the failure count trend to zero. If the parsed output is confusing for a
-particular case, write a short throwaway script against the raw binary
-output rather than guessing from column-aligned caret text.
+particular case, dump the actual scopes of a whole file rather than guessing
+from column-aligned caret text:
+
+```bash
+"$SKILL_ROOT/scripts/dump_scopes.py" --syntax X.sublime-syntax -c '//' file.x
+"$SKILL_ROOT/scripts/dump_scopes.py" --syntax X.sublime-syntax -c '//' --yaml --line 12 file.x
+```
+
+The first prints every token with its full scope stack (`--json` for
+scripts). The second prints a ready-to-paste YAML test block asserting
+line 12 as it scopes *today*, with the lines before it as `prefix_lines`:
+review it and fix any scope that is wrong before adding it to a test file.
 
 ## Step 6 — Confirm a green run is actually green
 
@@ -290,23 +299,8 @@ first count — so account for those before concluding an assertion is dead.
 
 ## Notes on `mise.toml`
 
-This skill repo ships a `mise.toml` with `setup`/`gen-tests`/`test` tasks
-that call the same scripts. Those tasks only work as convenience shortcuts
-when standing *inside this skill's own checkout* (their defaults are
-relative to wherever `mise.toml` itself lives) — once this folder is
-symlinked into a harness's skill-discovery path and the work is happening in
-a different target project, always invoke `scripts/setup_syntax_tests.sh`
-and `scripts/run_tests.sh` directly with explicit paths as shown above,
-rather than `mise run ...`. If the user uses mise, they may be interested in
-adding those tasks to their project. Confirm with them.
+This repo's `mise.toml` tasks only work inside this skill's own checkout. In a
+target project, call the scripts from `$SKILL_ROOT` directly as shown above.
 
-Don't add a `mise.toml` to the target project reflexively. When the scripts
-live in this skill, such tasks are only aliases wrapping a path into a
-gitignored `.claude/` directory — machine-specific, useless to any other
-contributor, and no shorter than the command itself. It earns its place only if
-the project vendors its own copies of the scripts at the repo root, so the
-tasks reference tracked files. Either way, ask first.
-
-For CI, don't reach for these scripts at all: with `tests/` tracked, the
-official `SublimeText/syntax-test-action@v2` runs the suite against real
-Sublime builds with no toolkit, Python or generation step involved.
+For CI, skip these scripts: with `tests/` tracked, the official
+`SublimeText/syntax-test-action@v2` runs the suite directly.
